@@ -12,6 +12,7 @@ tz = timezone('US/Eastern')
 #setting channels for messages to be sent in via discord, for convenience 
 wish_channel = 1011110363279937568
 test_channel = 744003353633357827
+exam_channel = 1085738679001161861
 
 client = discord.Client(intents=discord.Intents.all())
 
@@ -43,9 +44,9 @@ async def on_message(message):
   if message.channel.id == wish_channel and message.content == "!leaderboard":
     async with client.db.cursor() as cursor:
       #these lines create a list of the top five users, and their corresponding wish totals
-      await cursor.execute("SELECT user FROM stats ORDER BY total DESC LIMIT 5")
+      await cursor.execute("SELECT user FROM stats WHERE guild = ? ORDER BY total DESC LIMIT 5", (message.guild.id,))
       names = await cursor.fetchall()
-      await cursor.execute("SELECT DISTINCT total FROM stats ORDER BY total DESC LIMIT 5")
+      await cursor.execute("SELECT DISTINCT total FROM stats WHERE guild = ? ORDER BY total DESC LIMIT 5", (message.guild.id,))
       totals = await cursor.fetchall()
       
       #sends the message to the channel displaying the ranks
@@ -179,7 +180,7 @@ async def on_message(message):
   await client.db.commit()
 
 #this is all for testing purposes, so that I could experiment with the bot without the time needing to be 11:11. I made it so that the test functions only work in my own private server, so that they can't be abused
-  if message.channel.id == test_channel:
+  if message.channel.id == test_channel or message.channel.id == exam_channel:
     #testing
     async with client.db.cursor() as cursor:
       await cursor.execute("SELECT streak FROM stats WHERE user = ? AND guild = ?", (message.author.id, message.guild.id))
@@ -237,9 +238,25 @@ async def on_message(message):
         await cursor.execute("UPDATE stats SET streak = ? WHERE user = ? AND guild = ?", (streak, message.author.id, message.guild.id))
 
     #functions similarly to !stats
-    if message.content == "test":
+    if message.content == "test" or message.content == "!stats":
         em = discord.Embed(title=f"{message.author.name}'s test stats", description=f"current streak: {streak} days\ntotal: {total} wishes\nhighest streak: {highest} days\nlast wish: {lastwish}\ntime until next wish: {timetil}")
-        await client.get_channel(test_channel).send(embed=em)
+        await client.get_channel(message.channel.id).send(embed=em)
+    
+    #same leaderboard as before
+    if message.content == "!leaderboard":
+      async with client.db.cursor() as cursor:
+        #these lines create a list of the top five users, and their corresponding wish totals
+        await cursor.execute("SELECT user FROM stats WHERE guild = ? ORDER BY total DESC LIMIT 5", (message.guild.id,))
+        names = await cursor.fetchall()
+        await cursor.execute("SELECT DISTINCT total FROM stats WHERE guild = ? ORDER BY total DESC LIMIT 5", (message.guild.id,))
+        totals = await cursor.fetchall()
+      
+        #sends the message to the channel displaying the ranks
+        if (len(totals) < 5 or len(names) < 5):
+          await client.get_channel(message.channel.id).send("Not enough wishers for a leaderboard!")
+        else:
+          em = discord.Embed(title=f"leaderboard", description=f"🥇: {client.get_user(*names[0]).name} - {str(*totals[0])} wishes\n🥈: {client.get_user(*names[1]).name} - {str(*totals[1])} wishes\n🥉: {client.get_user(*names[2]).name} - {str(*totals[2])} wishes\n4: {client.get_user(*names[3]).name} - {str(*totals[3])} wishes\n5: {client.get_user(*names[4]).name} - {str(*totals[4])} wishes")
+          await client.get_channel(message.channel.id).send(embed=em)
   await client.db.commit()
 
 #checks every second whether or not the current time is 11:10, and if it is, it reminds everyone (who wanted to be notified) that it's almost time to wish
